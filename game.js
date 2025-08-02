@@ -10,7 +10,8 @@ const GAME_HEIGHT = canvas.height;
 const images = {};
 const imageFiles = [
     'scenario_california_games.png',
-    'public/image/capivara.png' // sprite da capivara
+    'public/image/capivara.png', // sprite da capivara
+    'public/image/elephant.png' // sprite do elefante
 ];
 
 let imagesLoaded = 0;
@@ -22,14 +23,16 @@ function loadImages() {
         img.onload = () => {
             imagesLoaded++;
             console.log(`Imagem carregada: ${filename}`);
-            if (imagesLoaded === imageFiles.length) {
+            if (imagesLoaded === imageFiles.length && !gameInitialized) {
+                gameInitialized = true;
                 startGame();
             }
         };
         img.onerror = () => {
             console.error(`Erro ao carregar imagem: ${filename}`);
             imagesLoaded++;
-            if (imagesLoaded === imageFiles.length) {
+            if (imagesLoaded === imageFiles.length && !gameInitialized) {
+                gameInitialized = true;
                 startGame();
             }
         };
@@ -99,10 +102,11 @@ class Enemy {
     constructor(x, y, type) {
         this.x = x;
         this.y = y;
-        this.width = 64;
-        this.height = 64;
+        // Ajustar tamanho para sprite pequeno do elefante
+        this.width = 48;  // tamanho menor para sprite pequeno
+        this.height = 48;
         this.speed = 2 + Math.random() * 3;
-        this.type = type; // 0: tartaruga, 1: humano, 2: elefante
+        this.type = type; // 0: elefante
         this.direction = Math.random() > 0.5 ? 1 : -1;
         this.spriteFrame = 0;
         this.animationTimer = 0;
@@ -126,20 +130,58 @@ class Enemy {
     }
 
     draw() {
-        // Desenhar sprite do inimigo baseado no tipo
-        const spriteX = this.spriteFrame * 64;
-        const spriteY = (this.type + 1) * 64; // +1 porque a capivara está na linha 0
-        
-        if (images['public/image/capivara.png']) {
-            ctx.drawImage(
-                images['public/image/capivara.png'],
-                spriteX, spriteY, 64, 64,
-                this.x, this.y, this.width, this.height
-            );
+        // Sprite sheet 8x2 - cálculo manual preciso das posições dos frames
+        if (images['public/image/elephant.png']) {
+            const img = images['public/image/elephant.png'];
+            
+            // Calcular posições exatas de cada frame manualmente
+            const totalWidth = img.width;
+            const totalHeight = img.height;
+            const frameWidth = totalWidth / 8;
+            const frameHeight = totalHeight / 2;
+            
+            // Mapear as posições exatas dos frames do meio (2, 3, 4, 5)
+            const framePositions = {
+                2: { x: frameWidth * 2, y: 0 },  // terceiro frame
+                3: { x: frameWidth * 3, y: 0 },  // quarto frame
+                4: { x: frameWidth * 4, y: 0 },  // quinto frame
+                5: { x: frameWidth * 5, y: 0 }   // sexto frame
+            };
+            
+            // Escolher frame baseado na animação
+            const middleFrames = [2, 3, 4, 5];
+            const currentFrameIndex = middleFrames[this.spriteFrame % middleFrames.length];
+            const framePos = framePositions[currentFrameIndex];
+            
+            // Usar posições exatas sem arredondamento
+            const spriteX = framePos.x;
+            const spriteY = framePos.y;
+            
+            // Salvar contexto para espelhamento
+            ctx.save();
+            
+            // Se está se movendo para a esquerda, espelhar
+            if (this.direction < 0) {
+                ctx.scale(-1, 1);
+                ctx.drawImage(
+                    img,
+                    spriteX, spriteY, frameWidth, frameHeight,
+                    -(this.x + this.width), this.y, this.width, this.height
+                );
+            } else {
+                // Movimento normal (direita)
+                ctx.drawImage(
+                    img,
+                    spriteX, spriteY, frameWidth, frameHeight,
+                    this.x, this.y, this.width, this.height
+                );
+            }
+            
+            // Restaurar contexto
+            ctx.restore();
         } else {
             // Fallback
-            const colors = ['#228B22', '#FF6347', '#4682B4'];
-            ctx.fillStyle = colors[this.type];
+            ctx.fillStyle = '#4682B4';
             ctx.fillRect(this.x, this.y, this.width, this.height);
         }
     }
@@ -150,6 +192,7 @@ let player;
 let enemies = [];
 let keys = {};
 let gameRunning = false;
+let gameInitialized = false; // Nova variável para controlar inicialização
 
 // Controles
 document.addEventListener('keydown', (e) => {
@@ -195,12 +238,12 @@ function checkCollisions() {
             // Colisão detectada - remover inimigo
             enemies.splice(index, 1);
             
-            // Adicionar novo inimigo
+            // Adicionar novo elefante após colisão
             setTimeout(() => {
                 enemies.push(new Enemy(
-                    Math.random() * (GAME_WIDTH - 64),
-                    Math.random() * (GAME_HEIGHT - 64),
-                    Math.floor(Math.random() * 3)
+                    Math.random() * (GAME_WIDTH - 48), // ajustar para o novo tamanho menor
+                    Math.random() * (GAME_HEIGHT - 48),
+                    0 // sempre criar elefante (tipo 0)
                 ));
             }, 2000);
         }
@@ -235,17 +278,17 @@ function gameLoop() {
     // Atualizar jogador
     player.update();
 
-    // Inimigos removidos temporariamente
-    // enemies.forEach(enemy => enemy.update());
+    // Atualizar inimigos
+    enemies.forEach(enemy => enemy.update());
 
     // Verificar colisões
-    // checkCollisions();
+    checkCollisions();
 
     // Desenhar jogador
     player.draw();
 
-    // Inimigos removidos temporariamente
-    // enemies.forEach(enemy => enemy.draw());
+    // Desenhar inimigos
+    enemies.forEach(enemy => enemy.draw());
 
     // Continuar o loop
     requestAnimationFrame(gameLoop);
@@ -253,11 +296,23 @@ function gameLoop() {
 
 // Função para iniciar o jogo
 function startGame() {
+    // Evitar múltiplas inicializações
+    if (gameRunning) return;
+    
+    console.log('Iniciando jogo...');
+    
     // Criar jogador
     player = new Player(GAME_WIDTH / 2 - 32, GAME_HEIGHT / 2 - 32);
 
-    // Inimigos removidos temporariamente
-    enemies = [];
+    // Limpar completamente e criar o primeiro adversário: Elefante
+    enemies.length = 0; // Limpar array completamente
+    console.log('Array de inimigos limpo. Criando apenas 1 elefante...');
+    enemies.push(new Enemy(
+        Math.random() * (GAME_WIDTH - 48), // ajustar para o novo tamanho menor
+        Math.random() * (GAME_HEIGHT - 48),
+        0 // tipo 0 para o elefante
+    ));
+    console.log('Total de inimigos criados:', enemies.length);
 
     gameRunning = true;
     gameLoop();
